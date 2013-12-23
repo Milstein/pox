@@ -27,6 +27,7 @@ from pox.lib.packet.ethernet import ethernet
 from pox.lib.packet.vlan import vlan
 from pox.lib.packet.llc import llc
 from pox.lib.packet.ipv4 import ipv4
+from pox.lib.packet.ipv6 import ipv6
 from pox.lib.packet.udp import udp
 from pox.lib.packet.tcp import tcp
 from pox.lib.packet.icmp import icmp
@@ -987,6 +988,14 @@ class ofp_match (ofp_base):
         match.nw_src = p.protosrc
         match.nw_dst = p.protodst
 
+    elif isinstance(p, ipv6):
+      match.nw_src = p.srcip
+      match.nw_dst = p.dstip
+      match.nw_proto = p.protocol
+      match.nw_tos = p.tos
+      match.tp_src = 133
+      return match
+
     return match
 
   def clone (self):
@@ -1183,13 +1192,15 @@ class ofp_match (ofp_base):
       packed += self.dl_dst.toRaw()
 
     def check_ip(val):
-      return (val or 0) if self.dl_type == 0x0800 else 0
+      return (val or 0) if self.dl_type == 0x0800 \
+          or self.dl_type == 0x86dd else 0
     def check_ip_or_arp(val):
       return (val or 0) if self.dl_type == 0x0800 \
-                           or self.dl_type == 0x0806 else 0
+                           or self.dl_type == 0x0806 \
+                           or self.dl_type == 0x86dd else 0
     def check_tp(val):
       return (val or 0) if self.dl_type == 0x0800 \
-                           and self.nw_proto in (1,6,17) else 0
+                           and self.nw_proto in (1,6,17,58) else 0
 
     packed += struct.pack("!HB", self.dl_vlan or 0, self.dl_vlan_pcp or 0)
     packed += _PAD # Hardcode padding
@@ -1240,9 +1251,9 @@ class ofp_match (ofp_base):
     but we won't quote it here because it seems to have a restrictive license.
     """
     #TODO: Set the masked fields to 0.
-    if self.dl_type == 0x0800:
+    if self.dl_type == 0x0800  or self.dl_type == 0x86dd :
         # IP
-        if  self.nw_proto not in (1,6,17):
+        if  self.nw_proto not in (1,6,17,58):
           # not TCP/UDP/ICMP -> Clear TP wildcards for the wire
           return wildcards & ~(OFPFW_TP_SRC | OFPFW_TP_DST)
         else:
@@ -1262,9 +1273,9 @@ class ofp_match (ofp_base):
 
     The logic in this should exactly match that in _wire_wildcards()
     """
-    if self.dl_type == 0x0800:
+    if self.dl_type == 0x0800  or self.dl_type == 0x86dd:
         # IP
-        if  self.nw_proto not in (1,6,17):
+        if  self.nw_proto not in (1,6,17,58):
           # not TCP/UDP/ICMP -> Clear TP wildcards for the wire
           self.tp_src = None
           self.tp_dst = None
@@ -1298,9 +1309,9 @@ class ofp_match (ofp_base):
     protocol specified is as TCP, UDP or SCTP. Fields that are ignored
     don't need to be wildcarded and should be set to 0.
     """
-    if self._dl_type == 0x0800:
+    if self._dl_type == 0x0800  or self.dl_type == 0x86dd:
         # IP
-        if  self._nw_proto not in (1,6,17):
+        if  self._nw_proto not in (1,6,17,55):
           # not TCP/UDP/ICMP -> Set TP wildcards for the object
           return wildcards | (OFPFW_TP_SRC | OFPFW_TP_DST)
         else:
